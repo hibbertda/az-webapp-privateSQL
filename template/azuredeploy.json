@@ -53,12 +53,44 @@
                 "description": "description"
             },
             "defaultValue": "."
+        },
+        "vm": {
+            "type": "object",
+            "metadata": {
+                "description": "management VM configuration options"
+            },
+            "defaultValue": {
+                "osImagePublisher": "MicrosoftWindowsServer",
+                "imageOffer": "WindowsServer",
+                "osImageSKU": "2016-Datacenter",
+                "adminUser": "demoacct"
+            }
+        },
+        "VMSku": {
+            "type": "string",
+            "metadata": {
+                "description": "VM Sku (Size)"
+            },
+            "allowedValues": [
+                "Standard_B1ms"
+            ],
+            "defaultValue": "Standard_B1ms"
+        },
+        "vmDiskType": {
+            "type": "string",
+            "metadata": {
+                "description": "VM Disk Type"
+            },
+            "allowedValues": [
+                "Standard_LRS"
+            ],
+            "defaultValue": "Standard_LRS"
         }        
     },
     "variables": {
         "nsgName": "[concat('nsg-', parameters('env'),'-',resourceGroup().location)]",
-        "pipName": "[concat('pip-', parameters('env'),'-',resourceGroup().location)]",
         "basName": "[concat('bas-', parameters('env'),'-',resourceGroup().location)]",
+        "baspipName": "[concat('pip-', variables('basName'))]",        
         "vnetName": "[concat('vnet-', parameters('env'),'-',resourceGroup().location)]",
         "SQLSrvName": "[concat('sqlsrv-', parameters('env'),'-',resourceGroup().location)]",
         "SQLDBName": "[concat('sqldb-', parameters('env'),'-',resourceGroup().location)]",
@@ -66,7 +98,8 @@
         "privateEndpointName": "[concat('privatelink-', variables('SQLSrvName'))]",
         "pvtendpointdnsgroupname": "[concat(variables('privateEndpointName'),'/mydnsgroupname')]",
         "appServicePlanName": "[concat('asp-', parameters('env'),'-',resourceGroup().location)]",
-        "webAppName": "[concat('webapp-', parameters('env'),'-',resourceGroup().location)]"
+        "webAppName": "[concat('webapp-', parameters('env'),'-',resourceGroup().location)]",
+        "vmName": "[concat('vm-', parameters('env'),'-',resourceGroup().location)]"        
     },
     "resources": [
         {
@@ -153,7 +186,15 @@
                             "privateEndpointNetworkPolicies": "Enabled",
                             "privateLinkServiceNetworkPolicies": "Enabled"
                         }
-                    }                                                            
+                    },
+                    {
+                        "name": "AzureBastionSubnet",
+                        "properties": {
+                            "addressPrefix": "10.15.2.64/26",
+                            "serviceEndpoints": [],
+                            "delegations": []
+                        }
+                    }                                                                                 
                 ]
             }
         },
@@ -322,7 +363,116 @@
                     }
                 }
             ]
-        }                        
+        },
+        {
+            "name": "[variables('baspipName')]",
+            "type": "Microsoft.Network/publicIPAddresses",
+            "apiVersion": "2020-11-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "[variables('baspipName')]"
+            },
+            "sku": {
+                "name": "Standard"
+            },
+            "properties": {
+                "publicIPAllocationMethod": "Static",
+                "dnsSettings": {
+                    "domainNameLabel": "[toLower(variables('baspipName'))]"
+                }
+            }
+        },
+        {
+            "name": "[variables('basName')]",
+            "type": "Microsoft.Network/bastionHosts",
+            "apiVersion": "2020-05-01",
+            "location": "[resourceGroup().location]",
+            "tags": {},
+            "dependsOn": [
+                "[variables('vnetName')]",
+                "[variables('baspipName')]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "IpConf",                        
+                        "properties": {
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'AzureBastionSubnet')]"
+                            },
+                            "publicIPAddress": {
+                                "id": "[resourceId('Microsoft.Network/publicIpAddresses', variables('baspipName'))]"
+                            }
+                        }
+                    }
+                ]
+            }
+        },
+        {
+            "name": "[concat(variables('vmName'), '-NIC0')]",
+            "type": "Microsoft.Network/networkInterfaces",
+            "apiVersion": "2018-08-01",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[variables('vnetName')]"
+            ],
+            "properties": {
+                "ipConfigurations": [
+                    {
+                        "name": "ipconfig1",
+                        "properties": {
+                            "subnet": {
+                                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), 'vms')]"
+                            },
+                            "privateIPAllocationMethod": "Dynamic"
+                        }
+                    }
+                ]
+            }
+        },
+ {
+            "name": "[variables('vmName')]",
+            "type": "Microsoft.Compute/virtualMachines",
+            "apiVersion": "2017-03-30",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+                "[concat(variables('vmName'), '-NIC0')]"
+            ],
+            "properties": {
+                "hardwareProfile": {
+                    "vmSize": "[parameters('vmSKU')]"
+                },
+                "osProfile": {
+                    "computerName": "windowsVM1",
+                    "adminUsername": "[parameters('vm').adminUser]",
+                    "adminPassword": "[parameters('sqlAdminPassword')]"
+                },
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "[parameters('vm').osImagePublisher]",
+                        "offer": "[parameters('vm').imageOffer]",
+                        "sku": "[parameters('vm').osImageSKU]",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "name": "[concat(variables('vmName'), '-disk0')]",
+                        "caching": "ReadWrite",
+                        "createOption": "FromImage",
+                        "managedDisk":{
+                            "storageAccountType": "[parameters('vmDiskType')]"
+                        }
+                    }
+                },
+                "networkProfile": {
+                    "networkInterfaces": [
+                        {
+                            "id": "[resourceId('Microsoft.Network/networkInterfaces', concat(variables('vmName'), '-NIC0'))]"
+                        }
+                    ]
+                }
+            }
+            
+        }                                                 
     ],
     "outputs": {}
 }

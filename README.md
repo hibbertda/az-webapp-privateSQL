@@ -8,6 +8,8 @@ Example template to deploy Azure resources to support a WebApp connecting to an 
 
 The ARM templated in this repo will deploy all required resources for this solution with a baseline configuration. 
 
+Included int he deployment is a management virtual machine and Azure Bastion host for accessing the private Virtual Network. The Azure SQL Database is not accessible over public networks, this VM can be used to access the database instance. 
+
 ### Azure Portal
 
 Use the following links to load the ARM template into the Azure portal for easy deployment.
