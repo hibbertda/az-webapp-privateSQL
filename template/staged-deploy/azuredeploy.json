@@ -1,0 +1,124 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "env": {
+            "type": "string",
+            "metadata": {
+                "description": "environment name/type"
+            },
+            "defaultValue": "demo"
+        },
+        "sqlConfig": {
+            "type": "object",
+            "metadata": {
+                "description": "Azure SQL (PaaS) server configuration(s)"
+            },
+            "defaultValue": {
+                "sku": "",
+                "tier": ""
+            }
+        },
+        "sqlAdminPassword": {
+            "type": "securestring",
+            "metadata": {
+                "description": "SQL Server Admin password"
+            }
+        },
+        "appServicePlan": {
+            "type": "object",
+            "metadata": {
+                "description": "configuration options foro App Service Plan"
+            },
+            "defaultValue": {
+                "sku": {
+                    "name": "S1",
+                    "capacity": 1
+                }
+            }
+        },
+        "webapp": {
+            "type": "string",
+            "metadata": {
+                "description": "description"
+            },
+            "defaultValue": "."
+        }      
+    },
+    "variables": {
+        "SQLSrvName": "[concat('sqlsrv-', parameters('env'),'-',resourceGroup().location)]",
+        "SQLDBName": "[concat('sqldb-', parameters('env'),'-',resourceGroup().location)]",
+        "appServicePlanName": "[concat('asp-', parameters('env'),'-',resourceGroup().location)]",
+        "webAppName": "[concat('webapp-', parameters('env'),'-',resourceGroup().location)]"    
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Sql/servers",
+            "apiVersion": "2021-05-01-preview",
+            "name": "[variables('SQLSrvName')]",
+            "location": "[resourceGroup().location]",
+            "kind": "v12.0",
+            "properties": {
+                "administratorLogin": "sqladmin",
+                "administratorLoginPassword": "[parameters('sqlAdminPassword')]",
+                "version": "12.0",
+                "minimalTlsVersion": "1.2",
+                "publicNetworkAccess": "Disabled",
+                "administrators": {},
+                "restrictOutboundNetworkAccess": "Disabled"
+            }
+        },
+        {
+            "name": "[concat(variables('SQLSrvName'), '/', variables('SQLDBName'))]",
+            "type": "Microsoft.Sql/servers/databases",
+            "apiVersion": "2014-04-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName": "sqlDatabase1"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Sql/servers', variables('SQLSrvName'))]"
+            ],
+            "properties": {
+                "collation": "SQL_Latin1_General_CP1_CI_AS",
+                "edition": "Basic",
+                "maxSizeBytes": "1073741824",
+                "requestedServiceObjectiveName": "Basic"
+            }
+        },       
+        {
+            "name": "[variables('appServicePlanName')]",
+            "type": "Microsoft.Web/serverfarms",
+            "apiVersion": "2020-12-01",
+            "location": "[resourceGroup().location]",
+            "sku": {
+                "name": "[parameters('appServicePlan').sku.name]",
+                "capacity": "[parameters('appServicePlan').sku.capacity]"
+            },
+            "tags": {
+                "displayName": "[variables('appServicePlanName')]"
+            },
+            "properties": {
+                "name": "[variables('appServicePlanName')]"
+            }
+        },
+        {
+            "name": "[variables('webAppName')]",
+            "type": "Microsoft.Web/sites",
+            "apiVersion": "2020-12-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "[concat('hidden-related:', resourceGroup().id, '/providers/Microsoft.Web/serverfarms/appServicePlan1')]": "Resource",
+                "displayName": "[variables('webAppName')]"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+            ],
+            "properties": {
+                "name": "[variables('webAppName')]",
+                "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+            }
+        }                     
+    ],
+    "outputs": {}
+}
